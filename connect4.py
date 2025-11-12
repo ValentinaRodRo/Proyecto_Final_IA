@@ -59,3 +59,28 @@ class Connect4:
                 return True
         
         return False
+    
+    def simular(self, accion):
+        #creamos una copia del entorno para probar la acción que está pensado el agente para su siguiente jugada... para que el tablero original quede intacto
+        
+        nuevo = Connect4() #se crea un nuevo entorno vacío
+        nuevo.tablero = self.tablero.copy() #copia el estado actual del tablero
+        #copiamos todo lo demás
+        nuevo.final = self.final
+        nuevo.ganador = self.ganador
+
+        nuevo.step(accion) #aplicamos la acción sobre el nuevo tablero
+        
+        return nuevo #nuevo pasa a representar el tablero después de hacer la jugada
+    
+    def reset(self):
+        #reiniciamos el tablero a su estado inicial
+
+        self.tablero[:] =0
+        self.turno = 1
+        self.final = False
+        self.ganador = None
+    
+    
+
+
