@@ -1,3 +1,5 @@
+import numpy as np
+
 class Connect4:
     FILAS, COLUMNAS = 6, 7
 
