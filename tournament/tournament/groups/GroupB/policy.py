@@ -9,7 +9,9 @@ class Hello(Policy):
     #////inicialización del agente////
     
     #----constructor----
-    def __init__(self):
+    def __init__(self, modo_torneo=False):
+        self.modo_torneo = modo_torneo #cuando es True el agente no aprende
+
         #----Q-learning----
         self.Q = {} #Q-table: guarda cuanto vale cada acción en cada estado
         self.N = {} #contador de visitas: cuantas veces se ha tomado cada acción
@@ -17,14 +19,58 @@ class Hello(Policy):
         #----parametros de aprendizaje----
         self.alpha = 0.2  #tasa de aprendizaje (que tanto peso tiene la nueva información vs. la vieja)
         self.gamma = 1.0 #solo importa el resultado final
-        self.epsilon = 0.02 #explora 2% y explota el 98%
 
         #----memoria del turno anterior----
         self.estado_anterior = None
         self.accion_anterior = None
 
+        #----epsilon dinamico----
+        self.epsilon_inicial = 0.99#al inicio necesita explorar porque el agente no sabe nada
+        self.epsilon_final = 0.05
+        self.epsilon_decay = 0.995 #ya después no necesita explorar tanto
+        self.epsilon = self.epsilon_inicial
+
+        #----niveles de inteligencia----
+        self.partidas_jugadas = 0
+        self.nivel_actual = 0
+        self.umbral_victoria = 80 
+        self.umbral_bloqueo = 120
+        self.umbral_mcts = 160
+
+        #----generador aleatorio----
+        self.rng = np.random.default_rng() #para elegir acciones aleatorias
+
+
+
+
+
     def mount(self):
-        pass
+        if self.modo_torneo:
+            try:
+                data = np.load("hello_model.npz", allow_pickle=True)
+                self.Q = data["Q"].item()
+                self.N = data["N"].item()
+                self.nivel_actual = int(data["nivel"])
+                self.epsilon = 0.0
+            except:
+                print("⚠ No se encontró modelo entrenado. Usando MCTS por defecto.")
+                self.nivel_actual = 3   #activar MCTS aunque no haya entrenamiento
+                self.epsilon = 0.0      #no explorar en torneo
+                self.Q = {}             #Q vacío (no se usa si nivel 3)
+
+        self.estado_anterior = None
+        self.accion_anterior = None
+    
+    def actualizar_nivel(self):
+        #el agente evoluciona por etapas según cuantas partidas haya jugado
+        if self.partidas_jugadas >= self.umbral_mcts:
+            self.nivel_actual = 3
+        elif self.partidas_jugadas >= self.umbral_bloqueo:
+            self.nivel_actual = 2
+        elif self.partidas_jugadas >= self.umbral_victoria:
+            self.nivel_actual = 1
+        else:
+            self.nivel_actual = 0
 
 
     #////funciones auxiliares////
@@ -209,7 +255,7 @@ class Hello(Policy):
         libres = list(state.get_free_cols())
 
         # 1.Q-learning del turno anterior
-        if self.estado_anterior is not None: #mira a ver si hay un estado anterior para poder aprender
+        if (not self.modo_torneo) and self.estado_anterior is not None:  #mira a ver si hay un estado anterior para poder aprender
             ant_s = self.estado_anterior
             ant_a = self.accion_anterior
 
@@ -232,30 +278,80 @@ class Hello(Policy):
             return libres[0]
 
         # 3.victoria inmediata
-        accion = self.accion_ganadora(state)
-        if accion is not None:
-            self.estado_anterior = estado
-            self.accion_anterior = accion
-            return accion
+        if self.nivel_actual >= 1:
+            acc = self.accion_ganadora(state)
+            if acc is not None:
+                self.estado_anterior = estado
+                self.accion_anterior = acc
+                return acc
 
         # 4.bloqueo inmediato
-        accion = self.accion_bloqueo(state)
-        if accion is not None:
-            self.estado_anterior = estado
-            self.accion_anterior = accion
-            return accion
+        if self.nivel_actual >= 2:
+            acc = self.accion_bloqueo(state)
+            if acc is not None:
+                self.estado_anterior = estado
+                self.accion_anterior = acc
+                return acc
 
         # 5.MCTS
         valores_mcts = self.mcts(state, simulaciones=240)
+        # si estamos en entrenamiento, actualizar Q(s,a)
+        if (not self.modo_torneo) and self.estado_anterior is not None:
+            ant_s = self.estado_anterior
+            ant_a = self.accion_anterior
+
+            if state.is_final():
+                w = state.get_winner()
+                recompensa = 1 if w == jugador else -1 if w == -jugador else 0
+            else:
+                recompensa = 0
+
+            self.actualizar_Q(ant_s, ant_a, recompensa, estado)
+
 
         # 6.política epsilon-greedy
-        rng = np.random.default_rng()
-
-        if rng.random() < self.epsilon:
-            accion = int(rng.choice(libres))
+        if self.modo_torneo or self.nivel_actual < 3:
+            valores = self.Q[estado].copy()
+            for col in range(7):
+                if col not in libres:
+                    valores[col] = -999
         else:
-            accion = int(max(libres, key=lambda a: valores_mcts[a]))
+            valores = self.mcts(state, simulaciones=120)
+
+        # epsilon-greedy
+        if (not self.modo_torneo) and self.rng.random() < self.epsilon:
+            accion = int(self.rng.choice(libres))
+        else:
+            accion = int(max(libres, key=lambda a: valores[a]))
 
         self.estado_anterior = estado
         self.accion_anterior = accion
         return accion
+
+    
+    def finalizar_partida(self, recompensa_final):
+        if not self.modo_torneo:
+            if self.estado_anterior is not None:
+                Q_ant = self.Q[self.estado_anterior][self.accion_anterior]
+                self.Q[self.estado_anterior][self.accion_anterior] += self.alpha * (
+                    recompensa_final - Q_ant
+                )
+
+            self.estado_anterior = None
+            self.accion_anterior = None
+
+            if self.epsilon > self.epsilon_final:
+                self.epsilon *= self.epsilon_decay
+
+            self.partidas_jugadas += 1
+            self.actualizar_nivel()
+    
+    def guardar_modelo(self, filename="hello_model.npz"):
+        np.savez(
+            filename,
+            Q=self.Q,
+            N=self.N,
+            nivel=self.nivel_actual,
+        )
+
+
