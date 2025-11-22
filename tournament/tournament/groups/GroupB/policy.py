@@ -33,9 +33,9 @@ class Hello(Policy):
         #----niveles de inteligencia----
         self.partidas_jugadas = 0
         self.nivel_actual = 0
-        self.umbral_victoria = 80 
-        self.umbral_bloqueo = 120
-        self.umbral_mcts = 160
+        self.umbral_victoria = 20 
+        self.umbral_bloqueo = 40
+        self.umbral_mcts = 80
 
         #----generador aleatorio----
         self.rng = np.random.default_rng() #para elegir acciones aleatorias
@@ -131,7 +131,7 @@ class Hello(Policy):
 
 
     #////MCTS con UCT////
-    def mcts(self, estado_inicial: ConnectState, simulaciones=240, c=1.4):
+    def mcts(self, estado_inicial: ConnectState, simulaciones=100, c=1.4):
 
         Qm = {} #suma de todas las recompensas obtenidas tomando la acción a en el estado s
         Nm = {} #veces que se ha elegido cada (estado, acción)
@@ -294,20 +294,8 @@ class Hello(Policy):
                 return acc
 
         # 5.MCTS
-        valores_mcts = self.mcts(state, simulaciones=240)
-        # si estamos en entrenamiento, actualizar Q(s,a)
-        if (not self.modo_torneo) and self.estado_anterior is not None:
-            ant_s = self.estado_anterior
-            ant_a = self.accion_anterior
-
-            if state.is_final():
-                w = state.get_winner()
-                recompensa = 1 if w == jugador else -1 if w == -jugador else 0
-            else:
-                recompensa = 0
-
-            self.actualizar_Q(ant_s, ant_a, recompensa, estado)
-
+        valores_mcts = self.mcts(state, simulaciones=100)
+        
 
         # 6.política epsilon-greedy
         if self.modo_torneo or self.nivel_actual < 3:

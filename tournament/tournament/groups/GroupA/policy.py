@@ -5,7 +5,7 @@ from connect4.connect_state import ConnectState
 
 class Aha(Policy):
 
-    def __init__(self, depth: int = 3):
+    def __init__(self, depth: int = 4):
         #constructor del agente
         self.depth = depth #cuantas jugadas hacia adelante mira el agente
 
@@ -102,10 +102,59 @@ class Aha(Policy):
     #EVALUACIÓN
 
     def evaluate(self, state: ConnectState) -> float:
-        ganador = state.get_winner()
-
-        if ganador == state.player:
-            return 1
-        elif ganador == -state.player:
-            return -1
-        return 0
+        if state.is_final():
+            ganador = state.get_winner()
+            if ganador == state.player:
+                return 100
+            elif ganador == -state.player:
+                return -100
+            return 0
+        
+        # NUEVO: Evaluación posicional
+        score = 0
+        
+        # Contar amenazas de 3 en línea
+        score += self.contar_amenazas(state, state.player) * 10
+        score -= self.contar_amenazas(state, -state.player) * 10
+        
+        # Valorar centro
+        centro_control = np.sum(state.board[:, 3] == state.player)
+        score += centro_control * 3
+        
+        return score
+    
+    def contar_amenazas(self, state: ConnectState, jugador: int) -> int:
+        """Cuenta líneas de 3 fichas consecutivas (amenazas de victoria)"""
+        amenazas = 0
+        board = state.board
+        filas, columnas = board.shape
+        
+        # Horizontal
+        for fila in range(filas):
+            for col in range(columnas - 3):
+                ventana = board[fila, col:col+4]
+                if np.sum(ventana == jugador) == 3 and np.sum(ventana == 0) == 1:
+                    amenazas += 1
+        
+        # Vertical
+        for col in range(columnas):
+            for fila in range(filas - 3):
+                ventana = board[fila:fila+4, col]
+                if np.sum(ventana == jugador) == 3 and np.sum(ventana == 0) == 1:
+                    amenazas += 1
+        
+        # Diagonal /
+        for fila in range(3, filas):
+            for col in range(columnas - 3):
+                ventana = [board[fila-i, col+i] for i in range(4)]
+                if ventana.count(jugador) == 3 and ventana.count(0) == 1:
+                    amenazas += 1
+        
+        # Diagonal \
+        for fila in range(filas - 3):
+            for col in range(columnas - 3):
+                ventana = [board[fila+i, col+i] for i in range(4)]
+                if ventana.count(jugador) == 3 and ventana.count(0) == 1:
+                    amenazas += 1
+        
+        return amenazas
