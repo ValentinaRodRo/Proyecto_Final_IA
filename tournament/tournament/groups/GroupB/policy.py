@@ -44,22 +44,21 @@ class Hello(Policy):
 
 
 
-    def mount(self):
-        if self.modo_torneo:
-            try:
-                data = np.load("hello_model.npz", allow_pickle=True)
-                self.Q = data["Q"].item()
-                self.N = data["N"].item()
-                self.nivel_actual = int(data["nivel"])
-                self.epsilon = 0.0
-            except:
-                print("⚠ No se encontró modelo entrenado. Usando MCTS por defecto.")
-                self.nivel_actual = 3   #activar MCTS aunque no haya entrenamiento
-                self.epsilon = 0.0      #no explorar en torneo
-                self.Q = {}             #Q vacío (no se usa si nivel 3)
+    def mount(self, timeout = None):
+        
+        #----activar el modo torneo automatico----
+        #Hello juega fuerte desde el primer turno
+        self.nivel_actual = 3 #activar victoria, bloqueo y MCTS desde el inicio
+        self.epsilon = 0.0 
+        self.alpha = 0.0
+        
+        # ---ajustamos MCTS segun timeout ---
+        if timeout is not None:
+            # 50 simulaciones por segundo disponible 
+            self.simulaciones_mcts = min(300, 50 * timeout)
+        else:
+            self.simulaciones_mcts = 120
 
-        self.estado_anterior = None
-        self.accion_anterior = None
     
     def actualizar_nivel(self):
         #el agente evoluciona por etapas según cuantas partidas haya jugado
